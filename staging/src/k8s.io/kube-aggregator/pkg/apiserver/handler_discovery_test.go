@@ -23,6 +23,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,31 +39,34 @@ import (
 	discoveryendpoint "k8s.io/apiserver/pkg/endpoints/discovery/aggregated"
 	scheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 )
 
 func newDiscoveryManager(rm discoveryendpoint.ResourceManager) *discoveryManager {
-	return NewDiscoveryManager(rm).(*discoveryManager)
+	dm := NewDiscoveryManager(rm).(*discoveryManager)
+	dm.dirtyAPIServiceQueue = newCompleterWorkqueue(dm.dirtyAPIServiceQueue)
+
+	return dm
 }
 
-// Returns true if the queue of services to sync empty this means everything has
-// been reconciled and placed into merged document
-func waitForEmptyQueue(stopCh <-chan struct{}, dm *discoveryManager) bool {
+// Returns true if the queue of services to sync is complete which means
+// everything has been reconciled and placed into merged document
+func waitForQueueComplete(stopCh <-chan struct{}, dm *discoveryManager) bool {
 	return cache.WaitForCacheSync(stopCh, func() bool {
-		// Once items have successfully synced they are removed from queue.
-		return dm.dirtyAPIServiceQueue.Len() == 0
+		return dm.dirtyAPIServiceQueue.(*completerWorkqueue).isComplete()
 	})
 }
 
 // Test that the discovery manager starts and aggregates from two local API services
 func TestBasic(t *testing.T) {
-	service1 := discoveryendpoint.NewResourceManager()
-	service2 := discoveryendpoint.NewResourceManager()
+	service1 := discoveryendpoint.NewResourceManager("apis")
+	service2 := discoveryendpoint.NewResourceManager("apis")
 	apiGroup1 := fuzzAPIGroups(2, 5, 25)
 	apiGroup2 := fuzzAPIGroups(2, 5, 50)
 	service1.SetGroups(apiGroup1.Items)
 	service2.SetGroups(apiGroup2.Items)
-	aggregatedResourceManager := discoveryendpoint.NewResourceManager()
+	aggregatedResourceManager := discoveryendpoint.NewResourceManager("apis")
 	aggregatedManager := newDiscoveryManager(aggregatedResourceManager)
 
 	for _, g := range apiGroup1.Items {
@@ -103,7 +108,7 @@ func TestBasic(t *testing.T) {
 
 	go aggregatedManager.Run(testCtx.Done())
 
-	require.True(t, waitForEmptyQueue(testCtx.Done(), aggregatedManager))
+	require.True(t, waitForQueueComplete(testCtx.Done(), aggregatedManager))
 
 	response, _, parsed := fetchPath(aggregatedResourceManager, "")
 	if response.StatusCode != 200 {
@@ -134,9 +139,9 @@ func checkAPIGroups(t *testing.T, api apidiscoveryv2beta1.APIGroupDiscoveryList,
 // Test that a handler associated with an APIService gets pinged after the
 // APIService has been marked as dirty
 func TestDirty(t *testing.T) {
-	pinged := false
-	service := discoveryendpoint.NewResourceManager()
-	aggregatedResourceManager := discoveryendpoint.NewResourceManager()
+	var pinged atomic.Bool
+	service := discoveryendpoint.NewResourceManager("apis")
+	aggregatedResourceManager := discoveryendpoint.NewResourceManager("apis")
 
 	aggregatedManager := newDiscoveryManager(aggregatedResourceManager)
 
@@ -152,17 +157,54 @@ func TestDirty(t *testing.T) {
 			},
 		},
 	}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pinged = true
+		pinged.Store(true)
 		service.ServeHTTP(w, r)
 	}))
 	testCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go aggregatedManager.Run(testCtx.Done())
-	require.True(t, waitForEmptyQueue(testCtx.Done(), aggregatedManager))
+	require.True(t, waitForQueueComplete(testCtx.Done(), aggregatedManager))
 
 	// immediately check for ping, since Run() should block for local services
-	if !pinged {
+	if !pinged.Load() {
+		t.Errorf("service handler never pinged")
+	}
+}
+
+// Shows that waitForQueueComplete also waits for syncing to
+// complete by artificially making the sync handler take a long time
+func TestWaitForSync(t *testing.T) {
+	pinged := atomic.Bool{}
+	service := discoveryendpoint.NewResourceManager("apis")
+	aggregatedResourceManager := discoveryendpoint.NewResourceManager("apis")
+
+	aggregatedManager := newDiscoveryManager(aggregatedResourceManager)
+
+	aggregatedManager.AddAPIService(&apiregistrationv1.APIService{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "v1.stable.example.com",
+		},
+		Spec: apiregistrationv1.APIServiceSpec{
+			Group:   "stable.example.com",
+			Version: "v1",
+			Service: &apiregistrationv1.ServiceReference{
+				Name: "test-service",
+			},
+		},
+	}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Second)
+		pinged.Store(true)
+		service.ServeHTTP(w, r)
+	}))
+	testCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go aggregatedManager.Run(testCtx.Done())
+	require.True(t, waitForQueueComplete(testCtx.Done(), aggregatedManager))
+
+	// immediately check for ping, since Run() should block for local services
+	if !pinged.Load() {
 		t.Errorf("service handler never pinged")
 	}
 }
@@ -170,8 +212,8 @@ func TestDirty(t *testing.T) {
 // Show that an APIService can be removed and that its group no longer remains
 // if there are no versions
 func TestRemoveAPIService(t *testing.T) {
-	aggyService := discoveryendpoint.NewResourceManager()
-	service := discoveryendpoint.NewResourceManager()
+	aggyService := discoveryendpoint.NewResourceManager("apis")
+	service := discoveryendpoint.NewResourceManager("apis")
 	apiGroup := fuzzAPIGroups(2, 3, 10)
 	service.SetGroups(apiGroup.Items)
 
@@ -211,7 +253,7 @@ func TestRemoveAPIService(t *testing.T) {
 		aggregatedManager.RemoveAPIService(s.Name)
 	}
 
-	require.True(t, waitForEmptyQueue(testCtx.Done(), aggregatedManager))
+	require.True(t, waitForQueueComplete(testCtx.Done(), aggregatedManager))
 
 	response, _, parsed := fetchPath(aggyService, "")
 	if response.StatusCode != 200 {
@@ -223,7 +265,7 @@ func TestRemoveAPIService(t *testing.T) {
 }
 
 func TestLegacyFallbackNoCache(t *testing.T) {
-	aggregatedResourceManager := discoveryendpoint.NewResourceManager()
+	aggregatedResourceManager := discoveryendpoint.NewResourceManager("apis")
 	rootAPIsHandler := discovery.NewRootAPIsHandler(discovery.DefaultAddresses{DefaultAddress: "192.168.1.1"}, scheme.Codecs)
 
 	legacyGroupHandler := discovery.NewAPIGroupHandler(scheme.Codecs, metav1.APIGroup{
@@ -355,7 +397,7 @@ func TestLegacyFallbackNoCache(t *testing.T) {
 	defer cancel()
 
 	go aggregatedManager.Run(testCtx.Done())
-	require.True(t, waitForEmptyQueue(testCtx.Done(), aggregatedManager))
+	require.True(t, waitForQueueComplete(testCtx.Done(), aggregatedManager))
 
 	// At this point external services have synced. Check if discovery document
 	// includes the legacy resources
@@ -394,7 +436,7 @@ func (a byVersion) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byVersion) Less(i, j int) bool { return versionMap[a[i].Version] < versionMap[a[j].Version] }
 
 func TestLegacyFallback(t *testing.T) {
-	aggregatedResourceManager := discoveryendpoint.NewResourceManager()
+	aggregatedResourceManager := discoveryendpoint.NewResourceManager("apis")
 	rootAPIsHandler := discovery.NewRootAPIsHandler(discovery.DefaultAddresses{DefaultAddress: "192.168.1.1"}, scheme.Codecs)
 
 	legacyGroupHandler := discovery.NewAPIGroupHandler(scheme.Codecs, metav1.APIGroup{
@@ -464,7 +506,7 @@ func TestLegacyFallback(t *testing.T) {
 	defer cancel()
 
 	go aggregatedManager.Run(testCtx.Done())
-	require.True(t, waitForEmptyQueue(testCtx.Done(), aggregatedManager))
+	require.True(t, waitForQueueComplete(testCtx.Done(), aggregatedManager))
 
 	// At this point external services have synced. Check if discovery document
 	// includes the legacy resources
@@ -492,8 +534,8 @@ func TestLegacyFallback(t *testing.T) {
 // This path in 1.26.0 would result in a deadlock if an aggregated APIService
 // returned a 304 Not Modified response for its own aggregated discovery document.
 func TestNotModified(t *testing.T) {
-	aggyService := discoveryendpoint.NewResourceManager()
-	service := discoveryendpoint.NewResourceManager()
+	aggyService := discoveryendpoint.NewResourceManager("apis")
+	service := discoveryendpoint.NewResourceManager("apis")
 	apiGroup := fuzzAPIGroups(2, 3, 10)
 	service.SetGroups(apiGroup.Items)
 
@@ -533,10 +575,10 @@ func TestNotModified(t *testing.T) {
 
 	// Important to wait here to ensure we prime the cache with the initial list
 	// of documents in order to exercise 304 Not Modified
-	require.True(t, waitForEmptyQueue(testCtx.Done(), aggregatedManager))
+	require.True(t, waitForQueueComplete(testCtx.Done(), aggregatedManager))
 
-	// Now add all groups. We excluded one group before so that AllServicesSynced
-	// could include it in this round. Now, if AllServicesSynced ever returns
+	// Now add all groups. We excluded one group before so that waitForQueueIsComplete
+	// could include it in this round. Now, if waitForQueueIsComplete ever returns
 	// true, it must have synced all the pre-existing groups before, which would
 	// return 304 Not Modified
 	for _, s := range apiServices {
@@ -544,7 +586,7 @@ func TestNotModified(t *testing.T) {
 	}
 
 	// This would wait the full timeout on 1.26.0.
-	require.True(t, waitForEmptyQueue(testCtx.Done(), aggregatedManager))
+	require.True(t, waitForQueueComplete(testCtx.Done(), aggregatedManager))
 }
 
 // copied from staging/src/k8s.io/apiserver/pkg/endpoints/discovery/v2/handler_test.go
@@ -608,4 +650,49 @@ func fetchPath(handler http.Handler, etag string) (*http.Response, []byte, *apid
 	}
 
 	return w.Result(), bytes, decoded
+}
+
+// completerWorkqueue is a workqueue.RateLimitingInterface that implements
+// isComplete
+type completerWorkqueue struct {
+	lock sync.Mutex
+	workqueue.RateLimitingInterface
+	processing map[interface{}]struct{}
+}
+
+var _ = workqueue.RateLimitingInterface(&completerWorkqueue{})
+
+func newCompleterWorkqueue(wq workqueue.RateLimitingInterface) *completerWorkqueue {
+	return &completerWorkqueue{
+		RateLimitingInterface: wq,
+		processing:            make(map[interface{}]struct{}),
+	}
+}
+
+func (q *completerWorkqueue) Add(item interface{}) {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	q.processing[item] = struct{}{}
+	q.RateLimitingInterface.Add(item)
+}
+
+func (q *completerWorkqueue) AddAfter(item interface{}, duration time.Duration) {
+	q.Add(item)
+}
+
+func (q *completerWorkqueue) AddRateLimited(item interface{}) {
+	q.Add(item)
+}
+
+func (q *completerWorkqueue) Done(item interface{}) {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	delete(q.processing, item)
+	q.RateLimitingInterface.Done(item)
+}
+
+func (q *completerWorkqueue) isComplete() bool {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	return q.Len() == 0 && len(q.processing) == 0
 }

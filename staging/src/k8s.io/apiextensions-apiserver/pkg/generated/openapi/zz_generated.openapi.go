@@ -215,7 +215,7 @@ func schema_k8sio_api_autoscaling_v1_CrossVersionObjectReference(ref common.Refe
 					},
 					"name": {
 						SchemaProps: spec.SchemaProps{
-							Description: "name is the name of the referent; More info: http://kubernetes.io/docs/user-guide/identifiers#names",
+							Description: "name is the name of the referent; More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -1022,7 +1022,7 @@ func schema_k8sio_api_autoscaling_v1_ScaleStatus(ref common.ReferenceCallback) c
 					},
 					"selector": {
 						SchemaProps: spec.SchemaProps{
-							Description: "selector is the label query over pods that should match the replicas count. This is same as the label selector but in the string format to avoid introspection by clients. The string will be in the same format as the query-param syntax. More info about label selectors: http://kubernetes.io/docs/user-guide/labels#label-selectors",
+							Description: "selector is the label query over pods that should match the replicas count. This is same as the label selector but in the string format to avoid introspection by clients. The string will be in the same format as the query-param syntax. More info about label selectors: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2169,6 +2169,13 @@ func schema_pkg_apis_meta_v1_ListOptions(ref common.ReferenceCallback) common.Op
 							Format:      "",
 						},
 					},
+					"sendInitialEvents": {
+						SchemaProps: spec.SchemaProps{
+							Description: "`sendInitialEvents=true` may be set together with `watch=true`. In that case, the watch stream will begin with synthetic events to produce the current state of objects in the collection. Once all such events have been sent, a synthetic \"Bookmark\" event  will be sent. The bookmark will report the ResourceVersion (RV) corresponding to the set of objects, and be marked with `\"k8s.io/initial-events-end\": \"true\"` annotation. Afterwards, the watch stream will proceed as usual, sending watch events corresponding to changes (subsequent to the RV) to objects watched.\n\nWhen `sendInitialEvents` option is set, we require `resourceVersionMatch` option to also be set. The semantic of the watch request is as following: - `resourceVersionMatch` = NotOlderThan\n  is interpreted as \"data at least as new as the provided `resourceVersion`\"\n  and the bookmark event is send when the state is synced\n  to a `resourceVersion` at least as fresh as the one provided by the ListOptions.\n  If `resourceVersion` is unset, this is interpreted as \"consistent read\" and the\n  bookmark event is send when the state is synced at least to the moment\n  when request started being processed.\n- `resourceVersionMatch` set to any other value or unset\n  Invalid error is returned.\n\nDefaults to true if `resourceVersion=\"\"` or `resourceVersion=\"0\"` (for backward compatibility reasons) and to false otherwise.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
@@ -2258,7 +2265,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
+							Description: "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2272,7 +2279,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 					},
 					"namespace": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the \"default\" namespace, but \"default\" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/namespaces",
+							Description: "Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the \"default\" namespace, but \"default\" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2286,7 +2293,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 					},
 					"uid": {
 						SchemaProps: spec.SchemaProps{
-							Description: "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
+							Description: "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2327,7 +2334,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 					},
 					"labels": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: http://kubernetes.io/docs/user-guide/labels",
+							Description: "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels",
 							Type:        []string{"object"},
 							AdditionalProperties: &spec.SchemaOrBool{
 								Allows: true,
@@ -2343,7 +2350,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 					},
 					"annotations": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: http://kubernetes.io/docs/user-guide/annotations",
+							Description: "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations",
 							Type:        []string{"object"},
 							AdditionalProperties: &spec.SchemaOrBool{
 								Allows: true,
@@ -2444,7 +2451,7 @@ func schema_pkg_apis_meta_v1_OwnerReference(ref common.ReferenceCallback) common
 					},
 					"name": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Name of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
+							Description: "Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -2452,7 +2459,7 @@ func schema_pkg_apis_meta_v1_OwnerReference(ref common.ReferenceCallback) common
 					},
 					"uid": {
 						SchemaProps: spec.SchemaProps{
-							Description: "UID of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
+							Description: "UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -2865,7 +2872,7 @@ func schema_pkg_apis_meta_v1_StatusDetails(ref common.ReferenceCallback) common.
 					},
 					"uid": {
 						SchemaProps: spec.SchemaProps{
-							Description: "UID of the resource. (when there is a single resource which can be described). More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
+							Description: "UID of the resource. (when there is a single resource which can be described). More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
 							Type:        []string{"string"},
 							Format:      "",
 						},

@@ -27,7 +27,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	container "k8s.io/kubernetes/pkg/kubelet/container"
-	state "k8s.io/kubernetes/pkg/kubelet/status/state"
 )
 
 // MockPodStatusProvider is a mock of PodStatusProvider interface.
@@ -105,20 +104,6 @@ func (mr *MockPodDeletionSafetyProviderMockRecorder) PodCouldHaveRunningContaine
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PodCouldHaveRunningContainers", reflect.TypeOf((*MockPodDeletionSafetyProvider)(nil).PodCouldHaveRunningContainers), pod)
 }
 
-// PodResourcesAreReclaimed mocks base method.
-func (m *MockPodDeletionSafetyProvider) PodResourcesAreReclaimed(pod *v1.Pod, status v1.PodStatus) bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PodResourcesAreReclaimed", pod, status)
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// PodResourcesAreReclaimed indicates an expected call of PodResourcesAreReclaimed.
-func (mr *MockPodDeletionSafetyProviderMockRecorder) PodResourcesAreReclaimed(pod, status interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PodResourcesAreReclaimed", reflect.TypeOf((*MockPodDeletionSafetyProvider)(nil).PodResourcesAreReclaimed), pod, status)
-}
-
 // MockPodStartupLatencyStateHelper is a mock of PodStartupLatencyStateHelper interface.
 type MockPodStartupLatencyStateHelper struct {
 	ctrl     *gomock.Controller
@@ -187,6 +172,36 @@ func NewMockManager(ctrl *gomock.Controller) *MockManager {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockManager) EXPECT() *MockManagerMockRecorder {
 	return m.recorder
+}
+
+// GetContainerResourceAllocation mocks base method.
+func (m *MockManager) GetContainerResourceAllocation(podUID, containerName string) (v1.ResourceList, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetContainerResourceAllocation", podUID, containerName)
+	ret0, _ := ret[0].(v1.ResourceList)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// GetContainerResourceAllocation indicates an expected call of GetContainerResourceAllocation.
+func (mr *MockManagerMockRecorder) GetContainerResourceAllocation(podUID, containerName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetContainerResourceAllocation", reflect.TypeOf((*MockManager)(nil).GetContainerResourceAllocation), podUID, containerName)
+}
+
+// GetPodResizeStatus mocks base method.
+func (m *MockManager) GetPodResizeStatus(podUID string) (v1.PodResizeStatus, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPodResizeStatus", podUID)
+	ret0, _ := ret[0].(v1.PodResizeStatus)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// GetPodResizeStatus indicates an expected call of GetPodResizeStatus.
+func (mr *MockManagerMockRecorder) GetPodResizeStatus(podUID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPodResizeStatus", reflect.TypeOf((*MockManager)(nil).GetPodResizeStatus), podUID)
 }
 
 // GetPodStatus mocks base method.
@@ -290,20 +305,6 @@ func (m *MockManager) Start() {
 func (mr *MockManagerMockRecorder) Start() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockManager)(nil).Start))
-}
-
-// State mocks base method.
-func (m *MockManager) State() state.Reader {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "State")
-	ret0, _ := ret[0].(state.Reader)
-	return ret0
-}
-
-// State indicates an expected call of State.
-func (mr *MockManagerMockRecorder) State() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "State", reflect.TypeOf((*MockManager)(nil).State))
 }
 
 // TerminatePod mocks base method.
