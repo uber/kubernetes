@@ -38,7 +38,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const maxProbeRetries = 3
+const (
+	maxProbeRetries                            = 3
+	durationBetweenHighVerbositySuccessReports = 15 * time.Minute
+)
 
 // Prober helps to check the liveness/readiness/startup of a container.
 type prober struct {
@@ -49,6 +52,8 @@ type prober struct {
 	runner kubecontainer.CommandRunner
 
 	recorder record.EventRecorder
+
+	lastHighVerbositySuccessReport time.Time
 }
 
 // NewProber creates a Prober, it takes a command runner and
@@ -105,7 +110,14 @@ func (pb *prober) probe(ctx context.Context, probeType probeType, pod *v1.Pod, s
 		RecordContainerEvent(pb.recorder, pod, &container, v1.EventTypeWarning, events.ContainerProbeWarning, "%s probe warning: %s", probeType, output)
 		klog.V(3).InfoS("Probe succeeded with a warning", "probeType", probeType, "pod", klog.KObj(pod), "podUID", pod.UID, "containerName", container.Name, "output", output)
 	} else {
-		klog.V(3).InfoS("Probe succeeded", "probeType", probeType, "pod", klog.KObj(pod), "podUID", pod.UID, "containerName", container.Name)
+		var level klog.Level
+		if pb.lastHighVerbositySuccessReport.Add(durationBetweenHighVerbositySuccessReports).Before(time.Now()) {
+			level = 1
+			pb.lastHighVerbositySuccessReport = time.Now()
+		} else {
+			level = 3
+		}
+		klog.V(level).InfoS("Probe succeeded", "probeType", probeType, "pod", klog.KObj(pod), "podUID", pod.UID, "containerName", container.Name)
 	}
 	return results.Success, output, nil
 }
